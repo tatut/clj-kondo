@@ -159,10 +159,10 @@
             (when-let [called-fn (resolve-call* idacs call (:resolved-ns call) (:name call))]
               (let [arities (:arities called-fn)
                     tag (or (when-let [v (get arities arity)]
-                                (:tag v))
-                              (when-let [v (get arities :varargs)]
-                                (when (>= arity (:min-arity v))
-                                  (:tag v))))]
+                              (:tag v))
+                            (when-let [v (get arities :varargs)]
+                              (when (>= arity (:min-arity v))
+                                (:tag v))))]
                 tag)))
           nil))
       :any))
@@ -173,24 +173,26 @@
           tags (map #(resolve-arg-type idacs %) arg-types)]
       (types/lint-arg-types ctx called-fn arg-types tags))))
 
-(defn show-arities [fixed-arities var-args-min-arity]
-  (let [fas (vec (sort fixed-arities))
+(defn show-arities [arities]
+  (let [fas (vec (sort (filter number? (keys arities))))
         max-fixed (peek fas)
-        arities (if var-args-min-arity
-                  (if (= max-fixed var-args-min-arity)
-                    fas (conj fas var-args-min-arity))
-                  fas)]
-    (cond var-args-min-arity
-          (str (str/join ", " arities) " or more")
+        ;; _ (prn "max-fixed" max-fixed)
+        arities* (if-let [v (:varargs arities)]
+                   (let [m (:min-arity v)]
+                     (if (= max-fixed m)
+                       fas (conj fas m)))
+                   fas)]
+    (cond (:varargs arities)
+          (str (str/join ", " arities*) " or more")
           (= 1 (count fas)) (first fas)
-          :else (str (str/join ", " (pop arities)) " or " (peek arities)))))
+          :else (str (str/join ", " (pop arities*)) " or " (peek arities*)))))
 
-(defn arity-error [ns-name fn-name called-with fixed-arities var-args-min-arity]
+(defn arity-error [ns-name fn-name called-with arities]
   (format "%s is called with %s %s but expects %s"
           (if ns-name (str ns-name "/" fn-name) fn-name)
           (str called-with)
           (if (= 1 called-with) "arg" "args")
-          (show-arities fixed-arities var-args-min-arity)))
+          (show-arities arities)))
 
 (defn lint-var-usage
   "Lints calls for arity errors, private calls errors. Also dispatches to call-specific linters.
@@ -260,18 +262,18 @@
                                                                          :base-lang base-lang
                                                                          :lang call-lang)
                                                                   caller-ns-sym fn-ns fn-name))
-                             fixed-arities (:fixed-arities called-fn)
-                             var-args-min-arity (:var-args-min-arity called-fn)
-                             ;; arities (:arities called-fn)
+                             arities (:arities called-fn)
+                             ;; _ (prn "ARR" arities called-fn)
                              ;; _ (prn ">>" (:name called-fn) arities (keys called-fn))
                              arity-error?
                              (and
                               (= :call (:type call))
                               (not (:invalid-arity-disabled? call))
-                              (or (not-empty fixed-arities)
-                                  var-args-min-arity)
-                              (not (or (contains? fixed-arities arity)
-                                       (and var-args-min-arity (>= arity var-args-min-arity))
+                              arities
+                              (not (or (contains? arities arity)
+                                       (when-let [v (:varargs arities)]
+                                         (let [m (:min-arity v)]
+                                           (>= arity m)))
                                        (config/skip? config :invalid-arity (rest (:callstack call))))))
                              errors
                              [(when arity-error?
@@ -280,7 +282,7 @@
                                  :col col
                                  :level :error
                                  :type :invalid-arity
-                                 :message (arity-error fn-ns fn-name arity fixed-arities var-args-min-arity)})
+                                 :message (arity-error fn-ns fn-name arity arities)})
                               (when (and (:private called-fn)
                                          (not= caller-ns-sym
                                                fn-ns)

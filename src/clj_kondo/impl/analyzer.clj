@@ -157,7 +157,7 @@
                      expr-meta (meta expr)
                      t (:tag expr-meta)
                      t (when t (types/tag-from-meta t true ;; true means it's a
-                                                           ;; return type
+                                                    ;; return type
                                                     ))]
                  (with-meta (into {} v)
                    ;; this is used for checking the return tag of a function body
@@ -360,7 +360,6 @@
                                  (assoc :docstring? docstring
                                         :in-def fn-name)) %)
                            bodies)
-        fixed-arities (set (keep :fixed-arity parsed-bodies))
         arities (into {} (map (fn [{:keys [:fixed-arity :varargs? :min-arity :tag :tags]}]
                                 (let [arg-tags (when (some identity tags)
                                                  tags)
@@ -370,9 +369,7 @@
                                   (if varargs?
                                     [:varargs v]
                                     [fixed-arity v]))))
-                      parsed-bodies)
-        ;; _ (prn ">" arities)
-        var-args-min-arity (:min-arity (first (filter :varargs? parsed-bodies)))]
+                      parsed-bodies)]
     (when fn-name
       (namespace/reg-var!
        ctx ns-name fn-name expr
@@ -380,9 +377,7 @@
                    :macro macro?
                    :private private?
                    :deprecated deprecated
-                   :fixed-arities (not-empty fixed-arities)
                    :arities arities
-                   :var-args-min-arity var-args-min-arity
                    :doc docstring
                    :added (:added var-meta))))
     (mapcat :parsed parsed-bodies)))
@@ -579,6 +574,17 @@
 
 (defn fn-arity [ctx bodies]
   (let [arities (map #(analyze-fn-arity ctx %) bodies)
+        arr (into {} (map (fn [{:keys [:fixed-arity :varargs? :min-arity :tag :tags]}]
+                            (let [arg-tags (when (some identity tags)
+                                             tags)
+                                  v (assoc-some {}
+                                                :tag tag :min-arity min-arity
+                                                :arg-tags arg-tags)]
+                              (if varargs?
+                                [:varargs v]
+                                [fixed-arity v]))))
+                  (map :arity arities))
+        ;; _ (prn "ARR" #_arities arr)
         fixed-arities (set (keep (comp :fixed-arity :arity) arities))
         var-args-min-arity (some #(when (:varargs? (:arity %))
                                     (:min-arity (:arity %))) arities)]
