@@ -2409,6 +2409,11 @@
   (is (empty? (lint! "(ns foo) (defn- f [])"
                      '{:linters {:unused-private-var {:exclude [foo/f]}}}))))
 
+(deftest core-match-test
+  (let [linted (lint! (io/file "corpus" "core_match" "match.clj")
+                      "--config" "{:linters {:unresolved-symbol {:level :warning}}}")]
+    (is (empty? linted))))
+
 ;;;; Scratch
 
 (comment
